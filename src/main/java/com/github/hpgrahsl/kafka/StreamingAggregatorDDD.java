@@ -27,8 +27,8 @@ public class StreamingAggregatorDDD {
             System.exit(-1);
         }
 
-        final String parentTopic = args[0];//"localdemo.kafka_connect.blog_orders";
-        final String childrenTopic = args[1]; //"localdemo.kafka_connect.blog_orderlines";
+        final String parentTopic = args[0];
+        final String childrenTopic = args[1];
 
         Properties props = new Properties();
         //NOTE: for quick iterating & easy reprocessing without using the app reset tool
@@ -69,8 +69,6 @@ public class StreamingAggregatorDDD {
 
         //2a) aggreate records per orderline id
         KTable<DefaultId,LatestChild<Integer,Integer,OrderLine>> tempTable = childStream
-                .map((childId, childRecord) -> childRecord != null ? new KeyValue<>(childId,childRecord) :
-                                new KeyValue<>(childId,new OrderLine(EventType.DELETE)))
                 .groupByKey(Serialized.with(defaultIdSerde, orderLineSerde))
                 .aggregate(
                         () -> new LatestChild<>(),

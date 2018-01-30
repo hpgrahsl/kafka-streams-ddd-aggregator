@@ -9,18 +9,11 @@ import com.github.hpgrahsl.kafka.model.common.EventType;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class OrderLine extends CdcAware {
 
-    private int id;
-    private int order_id;
-    private String product;
-    private double price;
-    private int quantity;
-
-    public OrderLine() {
-    }
-
-    public OrderLine(EventType eventType) {
-        super(eventType);
-    }
+    private final int id;
+    private final int order_id;
+    private final String product;
+    private final double price;
+    private final int quantity;
 
     @JsonCreator
     public OrderLine(

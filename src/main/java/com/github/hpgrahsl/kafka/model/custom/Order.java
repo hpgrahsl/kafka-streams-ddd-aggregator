@@ -11,17 +11,10 @@ import java.util.Date;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Order extends CdcAware {
 
-    private int id;
-    private String ordernumber;
-    private Date orderdate;
-    private String orderstatus;
-
-    public Order() {
-    }
-
-    public Order(EventType eventType) {
-        super(eventType);
-    }
+    private final int id;
+    private final String ordernumber;
+    private final Date orderdate;
+    private final String orderstatus;
 
     @JsonCreator
     public Order(

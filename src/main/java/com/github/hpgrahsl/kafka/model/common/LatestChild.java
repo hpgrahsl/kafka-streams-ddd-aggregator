@@ -1,22 +1,24 @@
 package com.github.hpgrahsl.kafka.model.common;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class LatestChild<PK,FK,T extends CdcAware> {
 
-    @JsonProperty
     private RecordId<PK> childId;
 
-    @JsonProperty
     private RecordId<FK> parentId;
 
-    @JsonProperty
     private T latest;
 
     public LatestChild() {
     }
 
-    public LatestChild(RecordId<PK> childId, RecordId<FK> parentId, T latest) {
+    @JsonCreator
+    public LatestChild(
+            @JsonProperty("childId") RecordId<PK> childId,
+            @JsonProperty("parentId") RecordId<FK> parentId,
+            @JsonProperty("latest") T latest) {
         this.childId = childId;
         this.parentId = parentId;
         this.latest = latest;

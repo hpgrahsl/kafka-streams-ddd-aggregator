@@ -16,9 +16,6 @@ public class CdcAware {
 
     private EventType eventType = EventType.UPSERT;
 
-    public CdcAware() {
-    }
-
     public CdcAware(EventType eventType) {
         this.eventType = eventType == null ? EventType.UPSERT : eventType;
     }

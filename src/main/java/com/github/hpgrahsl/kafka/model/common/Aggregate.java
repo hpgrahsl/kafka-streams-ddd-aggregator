@@ -1,21 +1,20 @@
 package com.github.hpgrahsl.kafka.model.common;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 
 public class Aggregate<P,C> {
 
-    @JsonProperty
-    private P parent;
+    private final P parent;
 
-    @JsonProperty
-    private List<C> children;
+    private final List<C> children;
 
-    public Aggregate() {
-    }
-
-    public Aggregate(P parent, List<C> children) {
+    @JsonCreator
+    public Aggregate(
+            @JsonProperty("parent") P parent,
+            @JsonProperty("children") List<C> children) {
         this.parent = parent;
         this.children = children;
     }
