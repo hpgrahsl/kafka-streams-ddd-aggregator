@@ -40,13 +40,9 @@ public class StreamingAggregatorDDD {
         props.put(CommonClientConfigs.METADATA_MAX_AGE_CONFIG, 500);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-        final Serde<DefaultId> defaultIdSerdeRaw = SerdeFactory.createDbzSerdeFor(DefaultId.class,true);
-        final Serde<Order> orderSerdeRaw = SerdeFactory.createDbzSerdeFor(Order.class,false);
-        final Serde<OrderLine> orderLineSerdeRaw = SerdeFactory.createDbzSerdeFor(OrderLine.class,false);
-
-        final Serde<DefaultId> defaultIdSerde = SerdeFactory.createPojoSerdeFor(DefaultId.class,true);
-        final Serde<Order> orderSerde = SerdeFactory.createPojoSerdeFor(Order.class,false);
-        final Serde<OrderLine> orderLineSerde = SerdeFactory.createPojoSerdeFor(OrderLine.class,false);
+        final Serde<DefaultId> defaultIdSerde = SerdeFactory.createHybridSerdeFor(DefaultId.class,true);
+        final Serde<Order> orderSerde = SerdeFactory.createHybridSerdeFor(Order.class,false);
+        final Serde<OrderLine> orderLineSerde = SerdeFactory.createHybridSerdeFor(OrderLine.class,false);
         final Serde<LatestChild> latestChildSerde = SerdeFactory.createPojoSerdeFor(LatestChild.class,false);
         final Serde<Children> childrenSerde = SerdeFactory.createPojoSerdeFor(Children.class,false);
         final Serde<Aggregate> aggregateSerde = SerdeFactory.createPojoSerdeFor(Aggregate.class,false);
@@ -54,18 +50,13 @@ public class StreamingAggregatorDDD {
 
         StreamsBuilder builder = new StreamsBuilder();
 
-        //NOTE: this reshaped topic must be pre-created otherwise topology fails
-        //1) read parent topic into ktable via reshaping
-        builder.stream(parentTopic,
-            Consumed.with(defaultIdSerdeRaw,orderSerdeRaw))
-                .to(parentTopic+"_reshape", Produced.with(defaultIdSerde,orderSerde));
-
-        KTable<DefaultId, Order> parentTable = builder.table(parentTopic+"_reshape",
-                Consumed.with(defaultIdSerde,orderSerde));
+        //1) read parent topic as ktable
+        KTable<DefaultId, Order> parentTable = builder.table(parentTopic,
+                                                    Consumed.with(defaultIdSerde,orderSerde));
 
         //2) read children topic as kstream
         KStream<DefaultId, OrderLine> childStream = builder.stream(childrenTopic,
-                Consumed.with(defaultIdSerdeRaw, orderLineSerdeRaw));
+                Consumed.with(defaultIdSerde, orderLineSerde));
 
         //2a) aggreate records per orderline id
         KTable<DefaultId,LatestChild<Integer,Integer,OrderLine>> tempTable = childStream
