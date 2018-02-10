@@ -47,7 +47,6 @@ public class StreamingAggregatorDDD {
 
         //1a) read parent topic as kstream
         KStream<GenericRecord, GenericRecord> parentStream = builder.stream(parentTopic);
-        parentStream.print(Printed.toSysOut());
 
         //1b) pseudo aggregation to redefine parent key schema for later "JOINability"
         KTable<GenericRecord, GenericRecord> parentTable = parentStream.map(
@@ -61,10 +60,7 @@ public class StreamingAggregatorDDD {
                     GenericRecord pk = GenericData.get().deepCopy(pks,key);
                     return new KeyValue<>(pk,value);
                 }
-        ).peek((key, value) -> {
-                    System.out.println("parent key\n" + key);
-                    System.out.println("parent key schema\n" + key.getSchema());
-        }).groupByKey().aggregate(
+        ).groupByKey().aggregate(
                 () -> (GenericRecord)null,
                 (parentId, parent, latest) -> parent,
                 Materialized.as(parentTopic+"_table")
@@ -75,8 +71,6 @@ public class StreamingAggregatorDDD {
                 builder.<GenericRecord,GenericRecord>stream(childrenTopic)
                         //this could be removed if tombstone records aren't sent by DBZ cdc
                         .filter((key, value) -> Objects.nonNull(value));
-
-        childStream.print(Printed.toSysOut());
 
         KTable<GenericRecord,GenericRecord> childTable = childStream
                 .map((key, value) -> {
@@ -134,11 +128,6 @@ public class StreamingAggregatorDDD {
                     },
                     Materialized.as(childrenTopic+"_table_aggregate")
                 );
-
-        childTable.toStream().peek((key, value) -> {
-            System.out.println("child key\n" + key);
-            System.out.println("child key schema\n" + key.getSchema());
-        });
 
         //3) KTable-KTable JOIN
         parentTable.join(childTable, (parent, children) -> {
