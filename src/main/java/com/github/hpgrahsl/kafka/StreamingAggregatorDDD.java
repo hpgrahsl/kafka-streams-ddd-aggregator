@@ -1,23 +1,23 @@
 package com.github.hpgrahsl.kafka;
 
-import com.github.hpgrahsl.kafka.model.common.Aggregate;
-import com.github.hpgrahsl.kafka.model.common.Children;
-import com.github.hpgrahsl.kafka.model.common.EventType;
-import com.github.hpgrahsl.kafka.model.common.LatestChild;
-import com.github.hpgrahsl.kafka.model.custom.DefaultId;
-import com.github.hpgrahsl.kafka.model.custom.Order;
-import com.github.hpgrahsl.kafka.model.custom.OrderLine;
-import com.github.hpgrahsl.kafka.serdes.SerdeFactory;
+import io.confluent.kafka.serializers.AbstractKafkaAvroSerDeConfig;
+import io.confluent.kafka.streams.serdes.avro.GenericAvroSerde;
+import org.apache.avro.Schema;
+import org.apache.avro.SchemaBuilder;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.streams.*;
 import org.apache.kafka.streams.kstream.*;
 
-import java.util.Properties;
-import java.util.UUID;
+import java.util.*;
 
 public class StreamingAggregatorDDD {
+
+    public static final String INTERMEDIATE_GENERIC_RECORD_NAMESPACE =
+            StreamingAggregatorDDD.class.getPackage().getName()+".aggregate";
 
     public static void main(String[] args) {
 
@@ -35,62 +35,124 @@ public class StreamingAggregatorDDD {
         //every run gets its own application id :)
         props.put(StreamsConfig.APPLICATION_ID_CONFIG, "streaming-aggregator-ddd-"+UUID.randomUUID().toString());
         props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, GenericAvroSerde.class);
+        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, GenericAvroSerde.class);
+        props.put(AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, "http://localhost:8081");
         props.put(StreamsConfig.CACHE_MAX_BYTES_BUFFERING_CONFIG, 10*1024);
         props.put(StreamsConfig.COMMIT_INTERVAL_MS_CONFIG, 1000);
         props.put(CommonClientConfigs.METADATA_MAX_AGE_CONFIG, 500);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-        final Serde<DefaultId> defaultIdSerde = SerdeFactory.createHybridSerdeFor(DefaultId.class,true);
-        final Serde<Order> orderSerde = SerdeFactory.createHybridSerdeFor(Order.class,false);
-        final Serde<OrderLine> orderLineSerde = SerdeFactory.createHybridSerdeFor(OrderLine.class,false);
-        final Serde<LatestChild> latestChildSerde = SerdeFactory.createPojoSerdeFor(LatestChild.class,false);
-        final Serde<Children> childrenSerde = SerdeFactory.createPojoSerdeFor(Children.class,false);
-        final Serde<Aggregate> aggregateSerde = SerdeFactory.createPojoSerdeFor(Aggregate.class,false);
-
-
         StreamsBuilder builder = new StreamsBuilder();
 
-        //1) read parent topic as ktable
-        KTable<DefaultId, Order> parentTable = builder.table(parentTopic,
-                                                    Consumed.with(defaultIdSerde,orderSerde));
+        //1a) read parent topic as kstream
+        KStream<GenericRecord, GenericRecord> parentStream = builder.stream(parentTopic);
+        parentStream.print(Printed.toSysOut());
 
-        //2) read children topic as kstream
-        KStream<DefaultId, OrderLine> childStream = builder.stream(childrenTopic,
-                Consumed.with(defaultIdSerde, orderLineSerde));
+        //1b) pseudo aggregation to redefine parent key schema for later "JOINability"
+        KTable<GenericRecord, GenericRecord> parentTable = parentStream.map(
+                (key, value) -> {
+                    Schema pks = SchemaBuilder.builder(INTERMEDIATE_GENERIC_RECORD_NAMESPACE)
+                            .record("Key")
+                            .prop("connect.name",INTERMEDIATE_GENERIC_RECORD_NAMESPACE+".Key")
+                            .fields()
+                            .name("id").type().intType().noDefault()
+                            .endRecord();
+                    GenericRecord pk = GenericData.get().deepCopy(pks,key);
+                    return new KeyValue<>(pk,value);
+                }
+        ).peek((key, value) -> {
+                    System.out.println("parent key\n" + key);
+                    System.out.println("parent key schema\n" + key.getSchema());
+        }).groupByKey().aggregate(
+                () -> (GenericRecord)null,
+                (parentId, parent, latest) -> parent,
+                Materialized.as(parentTopic+"_table")
+        );
 
-        //2a) aggreate records per orderline id
-        KTable<DefaultId,LatestChild<Integer,Integer,OrderLine>> tempTable = childStream
-                .groupByKey(Serialized.with(defaultIdSerde, orderLineSerde))
-                .aggregate(
-                        () -> new LatestChild<>(),
-                        (DefaultId childId, OrderLine childRecord, LatestChild<Integer,Integer,OrderLine> latestChild) -> {
-                            latestChild.update(childRecord,childId,new DefaultId(childRecord.getOrder_id()));
-                            return latestChild;
-                        },
-                        Materialized.as(childrenTopic+"_table").withKeySerde((Serde)defaultIdSerde).withValueSerde(latestChildSerde)
+        //2) read children topic as kstream and aggregate them per parent id
+        KStream<GenericRecord, GenericRecord> childStream =
+                builder.<GenericRecord,GenericRecord>stream(childrenTopic)
+                        //this could be removed if tombstone records aren't sent by DBZ cdc
+                        .filter((key, value) -> Objects.nonNull(value));
+
+        childStream.print(Printed.toSysOut());
+
+        KTable<GenericRecord,GenericRecord> childTable = childStream
+                .map((key, value) -> {
+
+                    GenericRecord before = (GenericRecord) value.get("before");
+                    GenericRecord after = (GenericRecord) value.get("after");
+
+                    if(before == null && after == null) {
+                        throw new RuntimeException("invalid record: before and after cannot both be null");
+                    }
+
+                    if(after != null) {
+                        key.put("id",after.get("order_id"));
+                    } else {
+                        key.put("id", before.get("order_id"));
+                    }
+
+                    //redefine child key schema for later "JOINability"
+                    Schema pks = SchemaBuilder.builder(INTERMEDIATE_GENERIC_RECORD_NAMESPACE)
+                            .record("Key")
+                            .prop("connect.name",INTERMEDIATE_GENERIC_RECORD_NAMESPACE+".Key")
+                            .fields()
+                            .name("id").type().intType().noDefault()
+                            .endRecord();
+                    GenericRecord pk = GenericData.get().deepCopy(pks,key);
+                    return new KeyValue<>(pk,value);
+                })
+                .groupByKey().aggregate(
+                    () -> (GenericRecord)null,
+                    (parentId, child, children) -> {
+                        if(children == null) {
+                            Schema schemaChild = child.getSchema();
+                            Schema schemaChildren = SchemaBuilder.record("Children").fields()
+                                    .name("entries").type().map().values(schemaChild)
+                                    .noDefault().endRecord();
+                            children = new GenericData.Record(schemaChildren);
+                        }
+
+                        Map entries = children.get("entries") == null ? new HashMap() : (Map)children.get("entries");
+
+                        GenericRecord before = (GenericRecord) child.get("before");
+                        GenericRecord after = (GenericRecord) child.get("after");
+
+                        if(before == null && after == null) {
+                            throw new RuntimeException("invalid record: before and after cannot both be null");
+                        }
+
+                        if(after != null) {
+                            entries.put(new Utf8(String.valueOf(after.get("id"))),child);
+                        } else {
+                            entries.remove(new Utf8(String.valueOf(before.get("id"))));
+                        }
+                        children.put("entries",entries);
+                        return children;
+                    },
+                    Materialized.as(childrenTopic+"_table_aggregate")
                 );
 
-        //2b) aggregate records per order id
-        KTable<DefaultId, Children<Integer,OrderLine>> childTable = tempTable.toStream()
-                .map((childId, latestChild) -> new KeyValue<DefaultId,LatestChild>(new DefaultId(latestChild.getParentId().getId()),latestChild))
-                .groupByKey(Serialized.with(defaultIdSerde,latestChildSerde))
-                .aggregate(
-                        () -> new Children<Integer,OrderLine>(),
-                        (parentId, latestChild, children) -> {
-                            children.update(latestChild);
-                            return children;
-                        },
-                        Materialized.as(childrenTopic+"_table_aggregate").withKeySerde((Serde)defaultIdSerde).withValueSerde(childrenSerde)
-                );
+        childTable.toStream().peek((key, value) -> {
+            System.out.println("child key\n" + key);
+            System.out.println("child key schema\n" + key.getSchema());
+        });
 
         //3) KTable-KTable JOIN
-        parentTable.join(childTable, (parent, children) ->
-                    parent.getEventType() == EventType.DELETE ?
-                            null : new Aggregate<>(parent,children.getEntries())
-                )
-                .toStream()
-                .peek((key, value) -> System.out.println("ddd aggregate => key: " + key + " - value: " + value))
-                .to("result_parent_child_ddd_aggregate", Produced.with(defaultIdSerde,(Serde)aggregateSerde));
+        parentTable.join(childTable, (parent, children) -> {
+                    Schema schemaAggregate = SchemaBuilder.record("Aggregate").fields()
+                            .name("parent").type(parent.getSchema()).noDefault()
+                            .name("children").type(children.getSchema()).noDefault()
+                            .endRecord();
+                    GenericRecord aggregate = new GenericData.Record(schemaAggregate);
+                    aggregate.put("parent",parent);
+                    aggregate.put("children",children);
+                    return aggregate;
+                }).toStream()
+                .peek((key, value) -> System.out.println("ddd aggregate\n -> " + value))
+                .to("result_ddd_aggregate");
 
         final KafkaStreams streams = new KafkaStreams(builder.build(), props);
         streams.start();
