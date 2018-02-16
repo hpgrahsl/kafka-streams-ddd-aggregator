@@ -1,12 +1,6 @@
 package com.github.hpgrahsl.kafka;
 
-import com.github.hpgrahsl.kafka.model.common.Aggregate;
-import com.github.hpgrahsl.kafka.model.common.Children;
-import com.github.hpgrahsl.kafka.model.common.EventType;
-import com.github.hpgrahsl.kafka.model.common.LatestChild;
-import com.github.hpgrahsl.kafka.model.custom.DefaultId;
-import com.github.hpgrahsl.kafka.model.custom.Order;
-import com.github.hpgrahsl.kafka.model.custom.OrderLine;
+import com.github.hpgrahsl.kafka.model.*;
 import com.github.hpgrahsl.kafka.serdes.SerdeFactory;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -41,56 +35,71 @@ public class StreamingAggregatorDDD {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
         final Serde<DefaultId> defaultIdSerde = SerdeFactory.createHybridSerdeFor(DefaultId.class,true);
-        final Serde<Order> orderSerde = SerdeFactory.createHybridSerdeFor(Order.class,false);
-        final Serde<OrderLine> orderLineSerde = SerdeFactory.createHybridSerdeFor(OrderLine.class,false);
-        final Serde<LatestChild> latestChildSerde = SerdeFactory.createPojoSerdeFor(LatestChild.class,false);
-        final Serde<Children> childrenSerde = SerdeFactory.createPojoSerdeFor(Children.class,false);
-        final Serde<Aggregate> aggregateSerde = SerdeFactory.createPojoSerdeFor(Aggregate.class,false);
-
+        final Serde<Customer> customerSerde = SerdeFactory.createHybridSerdeFor(Customer.class,false);
+        final Serde<Address> addressSerde = SerdeFactory.createHybridSerdeFor(Address.class,false);
+        final Serde<LatestAddress> latestAddressSerde = SerdeFactory.createPojoSerdeFor(LatestAddress.class,false);
+        final Serde<Addresses> addressesSerde = SerdeFactory.createPojoSerdeFor(Addresses.class,false);
+        final Serde<CustomerAddressAggregate> aggregateSerde =
+                SerdeFactory.createPojoSerdeFor(CustomerAddressAggregate.class,false);
 
         StreamsBuilder builder = new StreamsBuilder();
 
-        //1) read parent topic as ktable
-        KTable<DefaultId, Order> parentTable = builder.table(parentTopic,
-                                                    Consumed.with(defaultIdSerde,orderSerde));
+        //1) read parent topic i.e. customers as ktable
+        KTable<DefaultId, Customer> customerTable =
+                builder.table(parentTopic, Consumed.with(defaultIdSerde,customerSerde));
 
-        //2) read children topic as kstream
-        KStream<DefaultId, OrderLine> childStream = builder.stream(childrenTopic,
-                Consumed.with(defaultIdSerde, orderLineSerde));
+        customerTable.toStream().print(Printed.toSysOut());
 
-        //2a) aggreate records per orderline id
-        KTable<DefaultId,LatestChild<Integer,Integer,OrderLine>> tempTable = childStream
-                .groupByKey(Serialized.with(defaultIdSerde, orderLineSerde))
+        //2) read children topic i.e. addresses as kstream
+        KStream<DefaultId, Address> addressStream = builder.stream(childrenTopic,
+                Consumed.with(defaultIdSerde, addressSerde));
+
+        addressStream.print(Printed.toSysOut());
+
+        //2a) aggreate child records per address id
+        KTable<DefaultId,LatestAddress> tempTable = addressStream
+                .groupByKey(Serialized.with(defaultIdSerde, addressSerde))
                 .aggregate(
-                        () -> new LatestChild<>(),
-                        (DefaultId childId, OrderLine childRecord, LatestChild<Integer,Integer,OrderLine> latestChild) -> {
-                            latestChild.update(childRecord,childId,new DefaultId(childRecord.getOrder_id()));
-                            return latestChild;
+                        () -> new LatestAddress(),
+                        (DefaultId addressId, Address address, LatestAddress latest) -> {
+                            latest.update(address,addressId,new DefaultId(address.getCustomer_id()));
+                            return latest;
                         },
-                        Materialized.as(childrenTopic+"_table").withKeySerde((Serde)defaultIdSerde).withValueSerde(latestChildSerde)
+                        Materialized.as(childrenTopic+"_table")
+                                .withKeySerde((Serde)defaultIdSerde)
+                                    .withValueSerde(latestAddressSerde)
                 );
 
-        //2b) aggregate records per order id
-        KTable<DefaultId, Children<Integer,OrderLine>> childTable = tempTable.toStream()
-                .map((childId, latestChild) -> new KeyValue<DefaultId,LatestChild>(new DefaultId(latestChild.getParentId().getId()),latestChild))
-                .groupByKey(Serialized.with(defaultIdSerde,latestChildSerde))
+        tempTable.toStream().print(Printed.toSysOut());
+
+        //2b) aggregate addresses per customer id
+        KTable<DefaultId, Addresses> addressTable = tempTable.toStream()
+                .map((addressId, latestAddress) -> new KeyValue<>(latestAddress.getCustomerId(),latestAddress))
+                .groupByKey(Serialized.with(defaultIdSerde,latestAddressSerde))
                 .aggregate(
-                        () -> new Children<Integer,OrderLine>(),
-                        (parentId, latestChild, children) -> {
-                            children.update(latestChild);
-                            return children;
+                        () -> new Addresses(),
+                        (customerId, latestAddress, addresses) -> {
+                            addresses.update(latestAddress);
+                            return addresses;
                         },
-                        Materialized.as(childrenTopic+"_table_aggregate").withKeySerde((Serde)defaultIdSerde).withValueSerde(childrenSerde)
+                        Materialized.as(childrenTopic+"_table_aggregate")
+                                .withKeySerde((Serde)defaultIdSerde)
+                                    .withValueSerde(addressesSerde)
                 );
+
+        addressTable.toStream().print(Printed.toSysOut());
 
         //3) KTable-KTable JOIN
-        parentTable.join(childTable, (parent, children) ->
-                    parent.getEventType() == EventType.DELETE ?
-                            null : new Aggregate<>(parent,children.getEntries())
-                )
-                .toStream()
-                .peek((key, value) -> System.out.println("ddd aggregate => key: " + key + " - value: " + value))
-                .to("result_parent_child_ddd_aggregate", Produced.with(defaultIdSerde,(Serde)aggregateSerde));
+        KTable<DefaultId,CustomerAddressAggregate> dddAggregate =
+                customerTable.join(addressTable, (parent, children) ->
+                    parent.get_eventType() == EventType.DELETE ?
+                            null : new CustomerAddressAggregate(parent,children.getEntries())
+                );
+
+        dddAggregate.toStream().to("result_customer_address_aggregate",
+                                    Produced.with(defaultIdSerde,(Serde)aggregateSerde));
+
+        dddAggregate.toStream().print(Printed.toSysOut());
 
         final KafkaStreams streams = new KafkaStreams(builder.build(), props);
         streams.start();

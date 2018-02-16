@@ -1,31 +1,33 @@
-package com.github.hpgrahsl.kafka.model.custom;
+package com.github.hpgrahsl.kafka.model;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.*;
-import com.github.hpgrahsl.kafka.model.common.RecordId;
 
 import java.io.IOException;
 
-public class DefaultId extends RecordId<Integer> {
+@JsonTypeInfo(
+        use = JsonTypeInfo.Id.CLASS,
+        include = JsonTypeInfo.As.PROPERTY,
+        property = "_class")
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class DefaultId {
 
     @JsonIgnore
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    public static class CustomIdDeserializer extends KeyDeserializer {
+    public static class IdDeserializer extends KeyDeserializer {
 
         @Override
         public DefaultId deserializeKey(
                 String key,
                 DeserializationContext ctx) throws IOException {
 
-            return OBJECT_MAPPER.readValue(key,DefaultId.class);
+            return OBJECT_MAPPER.readValue(key, DefaultId.class);
         }
     }
 
-    public static class CustomIdSerializer extends JsonSerializer<DefaultId> {
+    public static class IdSerializer extends JsonSerializer<DefaultId> {
 
         @Override
         public void serialize(DefaultId key,
@@ -44,7 +46,6 @@ public class DefaultId extends RecordId<Integer> {
         this.id = id;
     }
 
-    @Override
     public Integer getId() {
         return id;
     }
@@ -71,8 +72,8 @@ public class DefaultId extends RecordId<Integer> {
     @Override
     public String toString() {
         return "DefaultId{" +
-            "id=" + id +
-            '}';
+                "id=" + id +
+                '}';
     }
 
 }

@@ -23,19 +23,6 @@ public class SerdeFactory {
         return Serdes.serdeFrom(ser,de);
     }
 
-    public static <T> Serde<T> createDbzSerdeFor(Class<T> clazz, boolean isKey) {
-        Map<String, Object> serdeProps = new HashMap<>();
-        serdeProps.put("serializedClass",clazz);
-
-        Serializer<T> ser = new JsonPojoSerializer<>();
-        ser.configure(serdeProps,isKey);
-
-        Deserializer<T> de = new JsonDbzDeserializer<>();
-        de.configure(serdeProps,isKey);
-
-        return Serdes.serdeFrom(ser,de);
-    }
-
     public static <T> Serde<T> createHybridSerdeFor(Class<T> clazz, boolean isKey) {
         Map<String, Object> serdeProps = new HashMap<>();
         serdeProps.put("serializedClass",clazz);

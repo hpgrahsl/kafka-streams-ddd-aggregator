@@ -1,7 +1,6 @@
 package com.github.hpgrahsl.kafka.serdes;
 
-import com.github.hpgrahsl.kafka.model.common.CdcAware;
-import com.github.hpgrahsl.kafka.model.common.EventType;
+import com.github.hpgrahsl.kafka.model.EventType;
 import org.apache.kafka.common.errors.SerializationException;
 
 import java.io.IOException;
@@ -31,9 +30,7 @@ public class JsonHybridDeserializer<T> extends JsonPojoDeserializer<T> {
                 if (temp == null) {
                     temp = new HashMap();
                     //NOTE: we record a delete event in this case
-                    if (CdcAware.class.isAssignableFrom(clazz)) {
-                        temp.put("eventType", EventType.DELETE);
-                    }
+                    temp.put("_eventType", EventType.DELETE);
                 }
                 temp.put("_class", clazz.getName());
 
