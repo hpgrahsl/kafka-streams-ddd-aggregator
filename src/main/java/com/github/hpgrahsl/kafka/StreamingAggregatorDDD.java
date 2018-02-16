@@ -48,15 +48,11 @@ public class StreamingAggregatorDDD {
         KTable<DefaultId, Customer> customerTable =
                 builder.table(parentTopic, Consumed.with(defaultIdSerde,customerSerde));
 
-        customerTable.toStream().print(Printed.toSysOut());
-
         //2) read children topic i.e. addresses as kstream
         KStream<DefaultId, Address> addressStream = builder.stream(childrenTopic,
                 Consumed.with(defaultIdSerde, addressSerde));
 
-        addressStream.print(Printed.toSysOut());
-
-        //2a) aggreate child records per address id
+        //2a) pseudo-aggreate addresses to keep latest relationship info
         KTable<DefaultId,LatestAddress> tempTable = addressStream
                 .groupByKey(Serialized.with(defaultIdSerde, addressSerde))
                 .aggregate(
@@ -69,8 +65,6 @@ public class StreamingAggregatorDDD {
                                 .withKeySerde((Serde)defaultIdSerde)
                                     .withValueSerde(latestAddressSerde)
                 );
-
-        tempTable.toStream().print(Printed.toSysOut());
 
         //2b) aggregate addresses per customer id
         KTable<DefaultId, Addresses> addressTable = tempTable.toStream()
@@ -87,13 +81,11 @@ public class StreamingAggregatorDDD {
                                     .withValueSerde(addressesSerde)
                 );
 
-        addressTable.toStream().print(Printed.toSysOut());
-
-        //3) KTable-KTable JOIN
+        //3) KTable-KTable JOIN to combine customer and addresses
         KTable<DefaultId,CustomerAddressAggregate> dddAggregate =
-                customerTable.join(addressTable, (parent, children) ->
-                    parent.get_eventType() == EventType.DELETE ?
-                            null : new CustomerAddressAggregate(parent,children.getEntries())
+                customerTable.join(addressTable, (customer, addresses) ->
+                    customer.get_eventType() == EventType.DELETE ?
+                            null : new CustomerAddressAggregate(customer,addresses.getEntries())
                 );
 
         dddAggregate.toStream().to("result_customer_address_aggregate",
