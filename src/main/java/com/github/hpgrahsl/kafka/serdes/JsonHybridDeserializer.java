@@ -32,8 +32,6 @@ public class JsonHybridDeserializer<T> extends JsonPojoDeserializer<T> {
                     //NOTE: we record a delete event in this case
                     temp.put("_eventType", EventType.DELETE);
                 }
-                temp.put("_class", clazz.getName());
-
                 data = OBJECT_MAPPER.readValue(OBJECT_MAPPER.writeValueAsBytes(temp), clazz);
             } catch(IOException e2) {
                 throw new SerializationException(e2);

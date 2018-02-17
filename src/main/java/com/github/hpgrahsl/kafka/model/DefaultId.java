@@ -6,11 +6,6 @@ import com.fasterxml.jackson.databind.*;
 
 import java.io.IOException;
 
-@JsonTypeInfo(
-        use = JsonTypeInfo.Id.CLASS,
-        include = JsonTypeInfo.As.PROPERTY,
-        property = "_class")
-@JsonIgnoreProperties(ignoreUnknown = true)
 public class DefaultId {
 
     @JsonIgnore

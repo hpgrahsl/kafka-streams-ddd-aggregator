@@ -1,14 +1,8 @@
 package com.github.hpgrahsl.kafka.model;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.*;
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS,
-        include = JsonTypeInfo.As.PROPERTY,
-        property = "_class")
-@JsonIgnoreProperties(ignoreUnknown = true)
+@JsonIgnoreProperties({"_eventType"})
 public class Address {
 
     private final EventType _eventType;
