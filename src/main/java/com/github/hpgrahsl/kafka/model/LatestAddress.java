@@ -47,7 +47,7 @@ public class LatestAddress {
 
     @Override
     public String toString() {
-        return "LatestChild{" +
+        return "LatestAddress{" +
             "addressId=" + addressId +
             ", customerId=" + customerId +
             ", latest=" + latest +
