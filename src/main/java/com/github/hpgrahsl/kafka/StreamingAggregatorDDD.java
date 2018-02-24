@@ -3,18 +3,19 @@ package com.github.hpgrahsl.kafka;
 import com.github.hpgrahsl.kafka.model.*;
 import com.github.hpgrahsl.kafka.serdes.SerdeFactory;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.clients.admin.AdminClientConfig;
-import org.apache.kafka.clients.admin.CreateTopicsResult;
-import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.Serde;
-import org.apache.kafka.streams.*;
+import org.apache.kafka.streams.Consumed;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.*;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -141,13 +142,19 @@ public class StreamingAggregatorDDD {
         adminProps.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG,broker);
         try {
             AdminClient adminClient = AdminClient.create(adminProps);
-            //TODO: check in advance if topics already exist (e.g. because of launching multiple instances)
-            CreateTopicsResult topicsResult = adminClient.createTopics(origTopicNames.stream()
-                    .map(n -> new NewTopic(n + REPARTITION_TOPIC_SUFFIX, numPartitions, (short)1))
-                    .collect(Collectors.toList())
-            );
-            //blocking for at most 20 secs which is ok during bootstrapping of demo app
-            topicsResult.all().get(20, TimeUnit.SECONDS);
+            ListTopicsResult topicList = adminClient.listTopics();
+            Set<String> topicsExisting = topicList.listings().get(10,TimeUnit.SECONDS)
+                    .stream().map(tl -> tl.name()).collect(Collectors.toSet());
+            Set<String> topicsToCreate = origTopicNames.stream().map(name -> name + REPARTITION_TOPIC_SUFFIX)
+                    .collect(Collectors.toSet());
+            topicsToCreate.removeAll(topicsExisting);
+            if(!topicsToCreate.isEmpty()) {
+                CreateTopicsResult topicsResult = adminClient.createTopics(topicsToCreate.stream()
+                        .map(name -> new NewTopic(name, numPartitions, (short)1))
+                        .collect(Collectors.toList())
+                );
+                topicsResult.all().get(10, TimeUnit.SECONDS);
+            }
             return true;
         } catch (Exception exc) {
             exc.printStackTrace();

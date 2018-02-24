@@ -1,6 +1,7 @@
 package com.github.hpgrahsl.kafka.model;
 
-import com.fasterxml.jackson.annotation.*;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class Customer {
 
