@@ -61,7 +61,7 @@ public class StreamingAggregatorDDD {
                             latest.update(address,addressId,new DefaultId(address.getCustomer_id()));
                             return latest;
                         },
-                        Materialized.as(childrenTopic+"_table")
+                        Materialized.as(childrenTopic+"_table_temp")
                                 .withKeySerde((Serde)defaultIdSerde)
                                     .withValueSerde(latestAddressSerde)
                 );
@@ -88,7 +88,7 @@ public class StreamingAggregatorDDD {
                             null : new CustomerAddressAggregate(customer,addresses.getEntries())
                 );
 
-        dddAggregate.toStream().to("result_customer_address_aggregate",
+        dddAggregate.toStream().to("final_ddd_aggregates",
                                     Produced.with(defaultIdSerde,(Serde)aggregateSerde));
 
         dddAggregate.toStream().print(Printed.toSysOut());
