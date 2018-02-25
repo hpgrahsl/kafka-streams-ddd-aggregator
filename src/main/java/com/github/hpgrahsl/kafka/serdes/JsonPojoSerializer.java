@@ -10,8 +10,6 @@ public class JsonPojoSerializer<T> implements Serializer<T> {
 
     protected final static ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    public JsonPojoSerializer() { }
-
     @Override
     public void configure(Map<String, ?> props, boolean isKey) { }
 

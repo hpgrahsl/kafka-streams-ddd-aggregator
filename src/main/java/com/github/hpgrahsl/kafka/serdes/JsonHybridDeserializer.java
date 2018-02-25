@@ -1,15 +1,27 @@
 package com.github.hpgrahsl.kafka.serdes;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.hpgrahsl.kafka.model.EventType;
 import org.apache.kafka.common.errors.SerializationException;
+import org.apache.kafka.common.serialization.Deserializer;
 
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-public class JsonHybridDeserializer<T> extends JsonPojoDeserializer<T> {
+public class JsonHybridDeserializer<T> implements Deserializer<T> {
 
     public static final String DBZ_CDC_EVENT_PAYLOAD_FIELD = "payload";
+
+    private final static ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private Class<T> clazz;
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public void configure(Map<String, ?> props, boolean isKey) {
+        clazz = (Class<T>)props.get("serializedClass");
+    }
 
     @Override
     public T deserialize(String topic, byte[] bytes) {
@@ -41,5 +53,6 @@ public class JsonHybridDeserializer<T> extends JsonPojoDeserializer<T> {
         return data;
     }
 
-
+    @Override
+    public void close() { }
 }

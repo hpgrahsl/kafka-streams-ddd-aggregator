@@ -2,7 +2,6 @@ package com.github.hpgrahsl.kafka.model;
 
 import com.fasterxml.jackson.annotation.*;
 
-@JsonIgnoreProperties({"_eventType"})
 public class Address {
 
     private final EventType _eventType;

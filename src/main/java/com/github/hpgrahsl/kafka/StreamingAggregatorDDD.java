@@ -34,13 +34,13 @@ public class StreamingAggregatorDDD {
         props.put(CommonClientConfigs.METADATA_MAX_AGE_CONFIG, 500);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-        final Serde<DefaultId> defaultIdSerde = SerdeFactory.createHybridSerdeFor(DefaultId.class,true);
-        final Serde<Customer> customerSerde = SerdeFactory.createHybridSerdeFor(Customer.class,false);
-        final Serde<Address> addressSerde = SerdeFactory.createHybridSerdeFor(Address.class,false);
-        final Serde<LatestAddress> latestAddressSerde = SerdeFactory.createPojoSerdeFor(LatestAddress.class,false);
-        final Serde<Addresses> addressesSerde = SerdeFactory.createPojoSerdeFor(Addresses.class,false);
+        final Serde<DefaultId> defaultIdSerde = SerdeFactory.createDbzEventJsonPojoSerdeFor(DefaultId.class,true);
+        final Serde<Customer> customerSerde = SerdeFactory.createDbzEventJsonPojoSerdeFor(Customer.class,false);
+        final Serde<Address> addressSerde = SerdeFactory.createDbzEventJsonPojoSerdeFor(Address.class,false);
+        final Serde<LatestAddress> latestAddressSerde = SerdeFactory.createDbzEventJsonPojoSerdeFor(LatestAddress.class,false);
+        final Serde<Addresses> addressesSerde = SerdeFactory.createDbzEventJsonPojoSerdeFor(Addresses.class,false);
         final Serde<CustomerAddressAggregate> aggregateSerde =
-                SerdeFactory.createPojoSerdeFor(CustomerAddressAggregate.class,false);
+                SerdeFactory.createDbzEventJsonPojoSerdeFor(CustomerAddressAggregate.class,false);
 
         StreamsBuilder builder = new StreamsBuilder();
 
