@@ -164,9 +164,83 @@ Such a convention can be helpful whenever consuming parties also need to act to 
                                
 ## Transfer DDD aggregates to data sinks
 
-_//TODO: @hanspeter shortly show how to get the resulting aggregates to MongoDB with the sink connector..._
+We originally set out to build these DDD aggregates in order to transfer data and synchronize changes between
+a data source (MySQL tables in this case) and a convenient data sink. By definition,
+DDD aggregates are typically complex data structures and therefore it makes perfect sense to write them
+to data stores which offer flexibel ways and means to index and/or query them. Talking about NoSQL databases a
+document store seems the most natural choice with [MongoDB](https://www.mongodb.com/) being the leading database 
+for such use cases.
 
-## Drawbacks & Limitations
+Thanks to [Kafka Connect](https://kafka.apache.org/documentation/#connect) and numerous turn-key ready 
+[connectors](https://www.confluent.io/product/connectors/) it is almost effortless to get this done. 
+Using a [MongoDB sink connector](https://github.com/hpgrahsl/kafka-connect-mongodb) from the open-source community,
+it is easy to have the DDD aggregates written into MongoDB. All it needs is a proper configuration which can be posted
+to the [REST API](https://docs.confluent.io/current/connect/restapi.html) of Kafka Connect in order to run the connector.
+
+In case the DDD aggregates should get written unmodified into MongoDB, a configuration may look as simple as follows:
+
+```json
+{
+ "name": "mdb-sink-01",
+ "config": {
+    "key.converter":"org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable":"false",
+    "value.converter":"org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable":"false",
+    "connector.class": "at.grahsl.kafka.connect.mongodb.MongoDbSinkConnector",
+    "tasks.max": "1",
+    "topics": "final_ddd_aggregates",
+    "mongodb.connection.uri":"mongodb://localhost:27017/kafkaconnect?w=1&journal=true",
+    "mongodb.collection":"customer_aggregates",
+    "mongodb.document.id.strategy":"at.grahsl.kafka.connect.mongodb.processor.id.strategy.FullKeyStrategy"
+ }
+}
+```
+
+which will result in **MongoDB documents** in the _customer_aggregates_ collection looking like:
+
+```json
+{
+    "_id": {
+        "id": "1001"
+    },
+    "addresses": [
+        {
+            "zip": "76036",
+            "_eventType": "UPSERT",
+            "city": "Euless",
+            "street": "3183 Moore Avenue",
+            "id": "10",
+            "state": "Texas",
+            "customer_id": "1001",
+            "type": "SHIPPING"
+        },
+        {
+            "zip": "17116",
+            "_eventType": "UPSERT",
+            "city": "Harrisburg",
+            "street": "2389 Hidden Valley Road",
+            "id": "11",
+            "state": "Pennsylvania",
+            "customer_id": "1001",
+            "type": "BILLING"
+        }
+    ],
+    "customer": {
+        "_eventType": "UPSERT",
+        "last_name": "Thomas",
+        "id": "1001",
+        "first_name": "Sally",
+        "email": "sally.thomas@acme.com"
+    }
+}
+```
+
+Due to the combination of the data in a single document some parts aren't needed or redundant. To get rid of any
+unwanted data (e.g. _eventType, customer_id of each address sub-document) it would also be possible
+to adapt the configuration in order to blacklist said fields.
+
+## Drawbacks and limitations
 While this first naïve version basically works it is very important to understand its current limitations:
 
 * not generically applicable thus needs custom code for POJOs and intermediate types
